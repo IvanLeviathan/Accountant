@@ -19,7 +19,7 @@ function helpers.getSavedCharacters()
     return characters
 end
 
-local function getDec(num) return tonumber(tostring(num):match("%.(%d+)")) end
+local function getDec(num) return tostring(num):match("%.(%d+)") end
 -- trim string function 
 function helpers.trim(s) return (s:gsub("^%s*(.-)%s*$", "%1")) end
 function helpers.splitString(input, delimiter)
@@ -29,6 +29,12 @@ function helpers.splitString(input, delimiter)
         table.insert(result, helpers.trim(word))
     end
     return result
+end
+
+function helpers.table_contains(tbl, x)
+    local found = false
+    for _, v in pairs(tbl) do if v == x then found = true end end
+    return found
 end
 
 -- money things
@@ -79,6 +85,11 @@ function helpers.prettifyMoney(money)
     end
 
     return table
+end
+
+function helpers.uglifyMoney(money)
+    return tostring(money.gold) .. string.format("%02d", money.silver) ..
+               string.format("%02d", money.copper)
 end
 
 local getDate = function(unix)
@@ -169,12 +180,16 @@ function helpers.calcProfits(character, period)
 
             if prevCurrency == nil then prevCurrency = currency end
 
-            -- calc revenue and expenditures from all changes
-            local goldDiff = currency.gold - prevCurrency.gold
-            local silverDiff = currency.silver - prevCurrency.silver
-            local copperDiff = currency.copper - prevCurrency.copper
+            local isProfit = false
+            local comparsion = X2Util:CompareMoneyString(
+                                   helpers.uglifyMoney(currency),
+                                   helpers.uglifyMoney(prevCurrency))
+            if (comparsion > 0) then isProfit = true end
 
-            prevCurrency = currency
+            local diffStr = X2Util:StrNumericSub(helpers.uglifyMoney(currency),
+                                                 helpers.uglifyMoney(
+                                                     prevCurrency))
+            local diff = helpers.prettifyMoney(math.abs(diffStr))
 
             if fetched[characterIndex] == nil then
                 fetched[characterIndex] = {
@@ -184,35 +199,23 @@ function helpers.calcProfits(character, period)
                 }
             end
 
-            if goldDiff < 0 then
-                fetched[characterIndex].expenditures.gold =
-                    (fetched[characterIndex].expenditures.gold or 0) +
-                        math.abs(goldDiff)
-            end
-            if goldDiff > 0 then
-                fetched[characterIndex].revenue.gold =
-                    (fetched[characterIndex].revenue.gold or 0) + goldDiff
-            end
-
-            if silverDiff < 0 then
-                fetched[characterIndex].expenditures.silver =
-                    (fetched[characterIndex].expenditures.silver or 0) +
-                        math.abs(silverDiff)
-            end
-            if silverDiff > 0 then
-                fetched[characterIndex].revenue.silver =
-                    (fetched[characterIndex].revenue.silver or 0) + silverDiff
-            end
-
-            if copperDiff < 0 then
-                fetched[characterIndex].expenditures.copper =
-                    (fetched[characterIndex].expenditures.copper or 0) +
-                        math.abs(copperDiff)
-            end
-            if copperDiff > 0 then
+            if isProfit then
                 fetched[characterIndex].revenue.copper =
-                    (fetched[characterIndex].revenue.copper or 0) + copperDiff
+                    fetched[characterIndex].revenue.copper + diff.copper
+                fetched[characterIndex].revenue.silver =
+                    fetched[characterIndex].revenue.silver + diff.silver
+                fetched[characterIndex].revenue.gold =
+                    fetched[characterIndex].revenue.gold + diff.gold
+            else
+                fetched[characterIndex].expenditures.copper =
+                    fetched[characterIndex].expenditures.copper + diff.copper
+                fetched[characterIndex].expenditures.silver =
+                    fetched[characterIndex].expenditures.silver + diff.silver
+                fetched[characterIndex].expenditures.gold =
+                    fetched[characterIndex].expenditures.gold + diff.gold
             end
+
+            prevCurrency = currency
 
         end
     end
@@ -231,30 +234,58 @@ function helpers.calcProfits(character, period)
 
     -- calc net profit
     if profits.revenue.copper >= 100 then
-        profits.revenue.copper = profits.revenue.copper - 100
-        profits.revenue.silver = profits.revenue.silver + 1
+        local div = profits.revenue.copper / 100
+        local extra = math.floor(div)
+        profits.revenue.silver = profits.revenue.silver + extra
+        profits.revenue.copper = getDec(string.format('%.2f', div))
     end
 
     if profits.expenditures.copper >= 100 then
-        profits.expenditures.copper = profits.expenditures.copper - 100
-        profits.expenditures.silver = profits.expenditures.silver + 1
+        local div = profits.expenditures.copper / 100
+        local extra = math.floor(div)
+        profits.expenditures.silver = profits.expenditures.silver + extra
+        profits.expenditures.copper = getDec(string.format('%.2f', div))
     end
 
     if profits.revenue.silver >= 100 then
-        profits.revenue.silver = profits.revenue.silver - 100
-        profits.revenue.gold = profits.revenue.gold + 1
+        local div = profits.revenue.silver / 100
+        local extra = math.floor(div)
+        profits.revenue.gold = profits.revenue.gold + extra
+        profits.revenue.silver = getDec(string.format('%.2f', div))
     end
 
     if profits.expenditures.silver >= 100 then
-        profits.expenditures.silver = profits.expenditures.silver - 100
-        profits.expenditures.gold = profits.expenditures.gold + 1
+        local div = profits.expenditures.silver / 100
+        local extra = math.floor(div)
+        profits.expenditures.gold = profits.expenditures.gold + extra
+        profits.expenditures.silver = getDec(string.format('%.2f', div))
     end
 
-    profits.netprofit.gold = profits.revenue.gold - profits.expenditures.gold
-    profits.netprofit.silver = math.abs(profits.revenue.silver -
-                                            profits.expenditures.silver)
-    profits.netprofit.copper = math.abs(profits.revenue.copper -
-                                            profits.expenditures.copper)
+    local revStr = helpers.uglifyMoney(profits.revenue)
+    local expStr = helpers.uglifyMoney(profits.expenditures)
+    local comparsion = X2Util:CompareMoneyString(revStr, expStr)
+    local profitDiff = helpers.prettifyMoney(
+                           X2Util:StrNumericSub(revStr, expStr))
+
+    -- format numbers for pretty view
+    profits.revenue.copper = string.format("%02d", profits.revenue.copper)
+    profits.revenue.silver = string.format("%02d", profits.revenue.silver)
+
+    profits.expenditures.copper = string.format("%02d",
+                                                profits.expenditures.copper)
+    profits.expenditures.silver = string.format("%02d",
+                                                profits.expenditures.silver)
+
+    profitDiff.copper = string.format('%02d', profitDiff.copper)
+    profitDiff.silver = string.format('%02d', profitDiff.silver)
+
+    profits.netprofit = profitDiff
+
+    if comparsion > 0 then
+        profits.netprofit.isProfit = true
+    else
+        profits.netprofit.isProfit = false
+    end
 
     return profits
 end

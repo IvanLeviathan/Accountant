@@ -93,15 +93,14 @@ local function updateElements()
     reactiveElements.netprofitCopperEdit:SetText(
         tostring(profits.netprofit.copper))
 
-    if profits.netprofit.gold > 0 then
+    if profits.netprofit.isProfit then
         reactiveElements.profitLabel.style:SetColor(0.0157, 0.7333, 0.1412, 1)
-    elseif profits.netprofit.gold < 0 then
-        reactiveElements.profitLabel.style:SetColor(0.878, 0.071, 0.059, 1)
+        reactiveElements.profitLabel:SetText('Net profit')
     else
-        reactiveElements.profitLabel.style:SetColor(FONT_COLOR.TITLE[1],
-                                                    FONT_COLOR.TITLE[2],
-                                                    FONT_COLOR.TITLE[3], 1)
+        reactiveElements.profitLabel.style:SetColor(0.878, 0.071, 0.059, 1)
+        reactiveElements.profitLabel:SetText('Net loss')
     end
+
 end
 
 local function toggleUI(state)
@@ -127,6 +126,12 @@ local function createWindow()
     for k, v in pairs(savedCharacters) do
         table.insert(characterSelectOptions, v)
     end
+
+    -- what if playerName did not loaded, first time init
+    if not helpers.table_contains(characterSelectOptions, CANVAS.playerInfo.name) then
+        table.insert(characterSelectOptions, CANVAS.playerInfo.name)
+    end
+
     local characterSelect = createComboBox(WINDOW, characterSelectOptions,
                                            paddingX, paddingY)
     characterSelect:Select(1)
