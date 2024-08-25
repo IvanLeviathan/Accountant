@@ -156,13 +156,9 @@ end
 function helpers.prettifyMoney(money)
     local table = {copper = 0, silver = 0, gold = 0}
 
-    -- Extract the gold, silver and copper from the string
     if money ~= nil then
-        -- Get the last two characters as copper
         table.copper = tonumber(string.sub(money, -2)) or 0
-        -- Get the string between the third and second last characters as silver
         table.silver = tonumber(string.sub(money, -4, -3)) or 0
-        -- Get the string between the start and the fifth last characters as gold
         table.gold = tonumber(string.sub(money, 0, -5)) or 0
     end
 
@@ -310,7 +306,10 @@ function helpers.calcProfits(character, period)
             local diffStr = X2Util:StrNumericSub(helpers.uglifyMoney(currency),
                                                  helpers.uglifyMoney(
                                                      prevCurrency))
-            local diff = helpers.prettifyMoney(math.abs(diffStr))
+            local diff = helpers.prettifyMoney(diffStr)
+            diff.gold = math.abs(diff.gold)
+            diff.silver = math.abs(diff.silver)
+            diff.copper = math.abs(diff.copper)
 
             if fetched[characterIndex] == nil then
                 fetched[characterIndex] = {
