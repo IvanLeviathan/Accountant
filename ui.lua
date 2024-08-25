@@ -21,10 +21,33 @@ local iconNames = {
 local function createButton(id, parent, text, x, y)
     local button = api.Interface:CreateWidget('button', id, parent)
     button:AddAnchor("TOPLEFT", x, y)
-    button:SetExtent(55, 26)
+    button:SetExtent(55, 25)
     button:SetText(text)
     api.Interface:ApplyButtonSkin(button, BUTTON_BASIC.DEFAULT)
     return button
+end
+function DefaultTooltipSetting(widget)
+    ApplyTextColor(widget, FONT_COLOR.SOFT_BROWN)
+    widget:SetInset(10, 10, 10, 10)
+    widget:SetLineSpace(4)
+    widget.style:SetSnap(true)
+end
+local function createTooltip(id, parent, text, x, y)
+    local tooltip = api.Interface:CreateWidget("gametooltip", id, parent)
+    tooltip:AddAnchor("TOPLEFT", x, y)
+    tooltip:EnablePick(false)
+    tooltip:Show(false)
+    DefaultTooltipSetting(tooltip)
+    tooltip:SetInset(7, 7, 7, 7)
+    tooltip.bg = tooltip:CreateNinePartDrawable('ui/common_new/default.dds',
+                                                "background")
+    tooltip.bg:SetTextureInfo("tooltip")
+    tooltip.bg:AddAnchor("TOPLEFT", tooltip, 0, 0)
+    tooltip.bg:AddAnchor("BOTTOMRIGHT", tooltip, 0, 0)
+    tooltip:SetInset(10, 10, 10, 10)
+    tooltip:ClearLines()
+    tooltip:AddLine(text, "", 0, "left", ALIGN.LEFT, 0)
+    return tooltip
 end
 local function createComboBox(parent, values, x, y)
     local dropdownBtn = W_CTRL.CreateComboBox(parent)
@@ -44,6 +67,19 @@ local function createLabel(id, parent, text, x, y, fontSize)
     label.style:SetFontSize(fontSize or 18)
 
     return label
+end
+
+local function createEdit(id, parent, text, x, y)
+    local field = W_CTRL.CreateEdit(id, parent)
+    field:SetExtent(255, 25)
+    field:AddAnchor("TOPLEFT", x, y)
+    field:SetText(tostring(text))
+    field.style:SetColor(0, 0, 0, 1)
+    field.style:SetAlign(ALIGN.LEFT)
+    -- field:SetDigit(true)
+    field:SetInitVal(text)
+    field:SetMaxTextLength(4)
+    return field
 end
 
 local CreateMoneyEdit = function(id, parent)
@@ -101,6 +137,15 @@ local function updateElements()
         reactiveElements.profitLabel:SetText('Net loss')
     end
 
+    -- update time on tooltip
+    local month, day, year = helpers.getDate()
+    reactiveElements.dateTooltip:ClearLines()
+    reactiveElements.dateTooltip:AddLine('The offset starts from GMT +0', "", 0,
+                                         "left", ALIGN.LEFT, 0)
+    reactiveElements.dateTooltip:AddLine(
+        string.format('Current date: %s.%s.%s', day, month, year), "", 0,
+        "left", ALIGN.LEFT, 0)
+
 end
 
 local function toggleUI(state)
@@ -115,7 +160,7 @@ local function toggleUI(state)
 end
 
 local function createWindow()
-    WINDOW = api.Interface:CreateWindow('mainWindow', 'Accountant', 600, 250)
+    WINDOW = api.Interface:CreateWindow('mainWindow', 'Accountant', 600, 275)
     WINDOW:SetHandler("OnCloseByEsc", function() toggleUI(false) end)
     function WINDOW:OnClose() toggleUI(false) end
 
@@ -145,6 +190,28 @@ local function createWindow()
     periodSelect:Select(1)
     function periodSelect:SelectedProc() updateElements() end
     reactiveElements.periodSelect = periodSelect
+
+    -- timezone
+    local timezoneLabel = createLabel('timezoneLabel', WINDOW, 'Timezone:',
+                                      paddingX + 420, paddingY, 14)
+    local timezoneEdit = createEdit('timezoneEdit', WINDOW, '', paddingX + 490,
+                                    paddingY)
+    timezoneEdit:SetExtent(50, 25)
+    timezoneEdit:SetMaxTextLength(3)
+    timezoneEdit:SetText(tostring(CANVAS.settings.timezone_offset))
+
+    local dateTooltip = createTooltip('dateTooltip', timezoneEdit, '', -25, 30)
+
+    function timezoneEdit.OnEnter(self)
+        dateTooltip:Show(true)
+        updateElements()
+    end
+    timezoneEdit:SetHandler("OnEnter", timezoneEdit.OnEnter)
+    function timezoneEdit.OnLeave(self) dateTooltip:Show(false) end
+    timezoneEdit:SetHandler("OnLeave", timezoneEdit.OnLeave)
+
+    reactiveElements.timezoneEdit = timezoneEdit
+    reactiveElements.dateTooltip = dateTooltip
 
     paddingY = 85
     -- money
@@ -315,6 +382,20 @@ local function createWindow()
     netprofitCopperEdit:SetText('0')
     reactiveElements.netprofitCopperEdit = netprofitCopperEdit
 
+    -- save button
+    local saveButton = createButton('saveButton', WINDOW, 'Save', 0, 0)
+    saveButton:AddAnchor("TOPLEFT", WINDOW, "BOTTOMLEFT", paddingX, -45)
+    if not saveButton:HasHandler("OnClick") then
+        saveButton:SetHandler("OnClick", function()
+            local newTimezone =
+                tonumber(reactiveElements.timezoneEdit:GetText()) or 0
+            reactiveElements.timezoneEdit:SetText(tostring(newTimezone))
+            CANVAS.settings.timezone_offset = newTimezone
+            helpers.updateSettings()
+            updateElements()
+        end)
+    end
+
 end
 
 local function createMainButton()
@@ -336,6 +417,7 @@ end
 local ui = {}
 function ui.Load(cnv)
     CANVAS = cnv
+    CANVAS.settings = helpers.getSettings()
     createMainButton()
     createWindow()
     WINDOW:SetHandler("OnUpdate", updateWindow)

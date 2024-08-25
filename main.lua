@@ -6,7 +6,7 @@ local addon = {
     name = "Accountant",
     author = "Misosoup",
     desc = "Tracking gold",
-    version = "0.2"
+    version = "0.3"
 }
 
 local CANVAS
@@ -15,7 +15,7 @@ local playerId = api.Unit:GetUnitId('player')
 
 local function checkMoney(_, dt)
     lastUpdate = lastUpdate + dt
-    if lastUpdate < 15000 then return end
+    if lastUpdate < 5000 then return end
     -- 
 
     local data = helpers.getData()
