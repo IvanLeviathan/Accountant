@@ -161,6 +161,7 @@ end
 
 local function createWindow()
     WINDOW = api.Interface:CreateWindow('mainWindow', 'Accountant', 600, 275)
+    WINDOW:AddAnchor("CENTER", "UIParent", 0, 0)
     WINDOW:SetHandler("OnCloseByEsc", function() toggleUI(false) end)
     function WINDOW:OnClose() toggleUI(false) end
 

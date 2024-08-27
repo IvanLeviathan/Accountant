@@ -236,6 +236,15 @@ function helpers.getDate(unix)
     return month, days, year
 end
 
+function helpers.getAllChanges(character)
+    local data = helpers.getData()
+    local changes = {}
+    local characters = helpers.getSavedCharacters()
+    local characterName = characters[character]
+    changes = data[characterName].changes
+    return changes
+end
+
 function helpers.getChangesByPeriod(character, period)
     local data = helpers.getData()
     local changes = {}
@@ -269,6 +278,11 @@ function helpers.getChangesByPeriod(character, period)
     return filteredChanges
 end
 
+function helpers.indexOf(array, value)
+    for i, v in ipairs(array) do if v == value then return i end end
+    return nil
+end
+
 function helpers.calcProfits(character, period)
     settings = helpers.getSettings()
     local profits = {
@@ -289,13 +303,23 @@ function helpers.calcProfits(character, period)
 
     for index, characterIndex in pairs(needFetch) do
         local changes = helpers.getChangesByPeriod(characterIndex, period)
+        local allChanges = helpers.getAllChanges(characterIndex)
         local prevCurrency
-
         for k, v in pairs(changes) do
             local split = helpers.splitString(v, '|')
             local currency = helpers.prettifyMoney(split[2])
 
-            if prevCurrency == nil then prevCurrency = currency end
+            if prevCurrency == nil then
+                local index = helpers.indexOf(allChanges, v)
+                if index > 1 then
+                    local prevSplit = helpers.splitString(allChanges[index - 1],
+                                                          '|')
+                    prevCurrency = helpers.prettifyMoney(prevSplit[2])
+                else
+                    prevCurrency = currency
+                end
+
+            end
 
             local isProfit = false
             local comparsion = X2Util:CompareMoneyString(

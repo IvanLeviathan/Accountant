@@ -6,7 +6,7 @@ local addon = {
     name = "Accountant",
     author = "Misosoup",
     desc = "Tracking gold",
-    version = "0.3.5"
+    version = "0.3.6"
 }
 
 local CANVAS
