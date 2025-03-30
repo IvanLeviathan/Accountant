@@ -3,7 +3,7 @@ local defaultSettings = require('Accountant/util/default_settings')
 
 local helpers = {}
 local settings
-helpers.periods = {'Day', 'Month'}
+helpers.periods = {'Day', 'Month', 'Week', 'Year', 'All time'}
 
 local filename = 'Accountant/data.txt'
 
@@ -207,33 +207,100 @@ function helpers.updateSettings()
     return settings
 end
 
-function helpers.getDate(unix)
-    -- Given unix date, return string date
-    local tabIndexOverflow = function(seed, table)
-        for i = 1, #table do
-            if seed - table[i] <= 0 then return i, seed end
-            seed = seed - table[i]
+function helpers.getDate(timestamp)
+    local timestamp = timestamp or api.Time:GetLocalTime()
+    local timezone_offset = settings.timezone_offset * 3600
+    local localTimestamp = X2Util:StrNumericAdd(tostring(timestamp),
+                                                tostring(timezone_offset))
+
+    -- Количество секунд в сутках
+    local secondsInADay = "86400"
+
+    -- Вычисляем количество дней, прошедших с 1 января 1970
+    local daysSinceEpoch = tonumber(X2Util:DivideNumberString(localTimestamp,
+                                                              secondsInADay))
+    -- Определяем год
+    local year = 1970
+    while daysSinceEpoch >= 365 do
+        -- Проверяем високосный год
+        local isLeapYear = (year % 4 == 0 and year % 100 ~= 0) or
+                               (year % 400 == 0)
+        local daysInYear = isLeapYear and 366 or 365
+
+        -- Если дней хватает на целый год, вычитаем его
+        if daysSinceEpoch >= daysInYear then
+            daysSinceEpoch = tonumber(X2Util:StrNumericSub(tostring(
+                                                               daysSinceEpoch),
+                                                           tostring(daysInYear)))
+            year = year + 1
+        else
+            break
         end
     end
-    local unix = unix or tostring(api.Time:GetLocalTime())
 
-    -- timezone offstamp
-    unix = X2Util:NumberToString(unix + (settings.timezone_offset * 3600) or 0)
-    local dayCount = function(yr)
-        return (yr % 4 == 0 and (yr % 100 ~= 0 or yr % 400 == 0)) and 366 or 365
+    -- Определяем месяц и день
+    local month = 1
+    local daysInMonth = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}
+
+    -- Учитываем високосные годы
+    if (year % 4 == 0 and year % 100 ~= 0) or (year % 400 == 0) then
+        daysInMonth[2] = 29
     end
-    local year, days, month = 1970, math.ceil(unix / 86400)
-    while days >= dayCount(year) do
-        days = days - dayCount(year)
-        year = year + 1
-    end -- Calculate year and days into that year
 
-    month, days = tabIndexOverflow(days, {
-        31, (dayCount(year) == 366 and 29 or 28), 31, 30, 31, 30, 31, 31, 30,
-        31, 30, 31
-    })
+    while daysSinceEpoch >= daysInMonth[month] do
+        daysSinceEpoch = tonumber(X2Util:StrNumericSub(tostring(daysSinceEpoch),
+                                                       tostring(
+                                                           daysInMonth[month])))
+        month = month + 1
+    end
 
-    return month, days, year
+    local day = X2Util:StrNumericAdd(tostring(daysSinceEpoch), "1") -- Дни считаются с 0, поэтому +1
+
+    -- Вычисляем часы, минуты, секунды
+    local fullDaysInSeconds = X2Util:StrIntegerMul(
+                                  X2Util:DivideNumberString(localTimestamp,
+                                                            secondsInADay),
+                                  secondsInADay)
+    local remainingSeconds = X2Util:StrNumericSub(localTimestamp,
+                                                  fullDaysInSeconds)
+
+    local hours = X2Util:DivideNumberString(remainingSeconds, "3600")
+    local hoursInSeconds = X2Util:StrIntegerMul(hours, "3600")
+
+    local minutes = X2Util:DivideNumberString(
+                        X2Util:StrNumericSub(remainingSeconds, hoursInSeconds),
+                        "60")
+    local minutesInSeconds = X2Util:StrIntegerMul(minutes, "60")
+
+    local seconds = X2Util:StrNumericSub(
+                        X2Util:StrNumericSub(remainingSeconds, hoursInSeconds),
+                        minutesInSeconds)
+
+    local weekday = (tonumber(daysSinceEpoch) + 4) % 7
+
+    -- Посчитаем день в году
+    local dayOfYear = 0
+    for m = 1, month - 1 do dayOfYear = dayOfYear + daysInMonth[m] end
+    dayOfYear = dayOfYear + tonumber(day)
+
+    -- Определяем день недели 1 января
+    local jan1Weekday = (weekday - (dayOfYear % 7) + 7) % 7 -- День недели 1 января
+
+    -- ISO-нумерация недель (первая неделя начинается с понедельника)
+    local weekNumber = math.floor((dayOfYear + jan1Weekday - 1) / 7) + 1
+
+    return {
+        year = year,
+        month = month,
+        day = tonumber(day),
+        hours = tonumber(hours),
+        minutes = tonumber(minutes),
+        seconds = tonumber(seconds),
+        weekday = weekday,
+        weekNumber = weekNumber, -- Номер недели
+        dayOfYear = dayOfYear
+    }
+
 end
 
 function helpers.getAllChanges(character)
@@ -257,22 +324,36 @@ function helpers.getChangesByPeriod(character, period)
     if changes == nil then return {} end
 
     local periodName = helpers.periods[period]
-    local month, day, year = helpers.getDate()
+    local date = helpers.getDate()
+
     -- filtering by period
     if periodName == nil then periodName = 'Day' end
     for k, v in pairs(changes) do
         local split = helpers.splitString(v, '|')
         local timestamp = split[1]
         local currency = split[2]
-        local logMonth, logDay, logYear = helpers.getDate(timestamp)
-        if periodName == 'Day' then
-            if logDay == day then table.insert(filteredChanges, v) end
-        end
-        if periodName == 'Month' then
-            if logMonth == month then
+        local logDate = helpers.getDate(timestamp)
+        if periodName == 'Day' and logDate.year == date.year and logDate.month ==
+            date.month then
+            if logDate.day == date.day then
                 table.insert(filteredChanges, v)
             end
         end
+        if periodName == 'Month' then
+            if logDate.month == date.month and logDate.year == date.year then
+                table.insert(filteredChanges, v)
+            end
+        end
+        if periodName == 'Week' then
+            if logDate.weekNumber == date.weekNumber and logDate.year ==
+                date.year then table.insert(filteredChanges, v) end
+        end
+        if periodName == 'Year' then
+            if logDate.year == date.year then
+                table.insert(filteredChanges, v)
+            end
+        end
+        if periodName == 'All time' then table.insert(filteredChanges, v) end
     end
 
     return filteredChanges

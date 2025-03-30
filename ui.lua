@@ -138,13 +138,15 @@ local function updateElements()
     end
 
     -- update time on tooltip
-    local month, day, year = helpers.getDate()
+    local date = helpers.getDate()
     reactiveElements.dateTooltip:ClearLines()
     reactiveElements.dateTooltip:AddLine('The offset starts from GMT +0', "", 0,
                                          "left", ALIGN.LEFT, 0)
-    reactiveElements.dateTooltip:AddLine(
-        string.format('Current date: %s.%s.%s', day, month, year), "", 0,
-        "left", ALIGN.LEFT, 0)
+    reactiveElements.dateTooltip:AddLine(string.format(
+                                             'Current date: %02d.%02d.%d %02d:%02d',
+                                             date.day, date.month, date.year,
+                                             date.hours, date.minutes), "", 0,
+                                         "left", ALIGN.LEFT, 0)
 
 end
 
