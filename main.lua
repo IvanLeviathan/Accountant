@@ -6,7 +6,7 @@ local addon = {
     name = "Accountant",
     author = "Misosoup",
     desc = "Tracking gold",
-    version = "0.4"
+    version = "0.5"
 }
 
 local CANVAS
@@ -14,9 +14,6 @@ local lastUpdate = 0
 local playerId = api.Unit:GetUnitId('player')
 
 local function checkMoney(_, dt)
-    lastUpdate = lastUpdate + dt
-    if lastUpdate < 5000 then return end
-    -- 
 
     local data = helpers.getData()
     local curMoney = X2Util.GetMyMoneyString()
@@ -38,15 +35,13 @@ local function checkMoney(_, dt)
         helpers.saveData(data)
     end
 
-    -- 
-    lastUpdate = dt
 end
 
 local function Load()
     CANVAS = api.Interface:CreateEmptyWindow("Accountant")
     CANVAS:Show(true)
-    CANVAS:SetHandler("OnUpdate", checkMoney)
     CANVAS.playerInfo = api.Unit:GetUnitInfoById(playerId)
+    CANVAS.checkMoney = checkMoney
     UI.Load(CANVAS)
     api.Log:Info("Loaded " .. addon.name .. " v" .. addon.version .. " by " ..
                      addon.author)

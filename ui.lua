@@ -154,6 +154,7 @@ local function toggleUI(state)
     if state then
         WINDOW:Show(true)
         uiShowed = true
+        CANVAS.checkMoney()
         updateElements()
     else
         WINDOW:Show(false)
@@ -423,7 +424,7 @@ function ui.Load(cnv)
     CANVAS.settings = helpers.getSettings()
     createMainButton()
     createWindow()
-    WINDOW:SetHandler("OnUpdate", updateWindow)
+    -- WINDOW:SetHandler("OnUpdate", updateWindow)
 end
 
 function ui.Unload()
