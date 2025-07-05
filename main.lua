@@ -6,11 +6,10 @@ local addon = {
     name = "Accountant",
     author = "Misosoup",
     desc = "Tracking gold",
-    version = "0.5"
+    version = "0.6"
 }
 
 local CANVAS
-local lastUpdate = 0
 local playerId = api.Unit:GetUnitId('player')
 
 local function checkMoney(_, dt)
@@ -37,19 +36,37 @@ local function checkMoney(_, dt)
 
 end
 
+local eventName = "PLAYER_MONEY";
+
 local function Load()
     CANVAS = api.Interface:CreateEmptyWindow("Accountant")
     CANVAS:Show(true)
     CANVAS.playerInfo = api.Unit:GetUnitInfoById(playerId)
-    CANVAS.checkMoney = checkMoney
     UI.Load(CANVAS)
     api.Log:Info("Loaded " .. addon.name .. " v" .. addon.version .. " by " ..
                      addon.author)
+    checkMoney();
+    -- Event Handlers
+    function CANVAS:OnEvent(event, ...)
+        if (event == eventName) then
+            local change = unpack(arg);
+            local revenue = true;
+            if (change < 0) then revenue = false; end
+
+            -- TODO REVAMP
+            checkMoney();
+
+        end
+    end
+    CANVAS:SetHandler("OnEvent", CANVAS.OnEvent)
+    CANVAS:RegisterEvent(eventName);
 end
 
 local function Unload()
     if CANVAS ~= nil then
+        checkMoney();
         CANVAS:Show(false)
+        CANVAS:ReleaseHandler("OnEvent")
         CANVAS = nil
     end
     UI.Unload()

@@ -74,7 +74,7 @@ local function createEdit(id, parent, text, x, y)
     field:SetExtent(255, 25)
     field:AddAnchor("TOPLEFT", x, y)
     field:SetText(tostring(text))
-    field.style:SetColor(0, 0, 0, 1)
+    -- field.style:SetColor(0, 0, 0, 1)
     field.style:SetAlign(ALIGN.LEFT)
     -- field:SetDigit(true)
     field:SetInitVal(text)
@@ -154,7 +154,6 @@ local function toggleUI(state)
     if state then
         WINDOW:Show(true)
         uiShowed = true
-        CANVAS.checkMoney()
         updateElements()
     else
         WINDOW:Show(false)
@@ -300,7 +299,8 @@ local function createWindow()
     reactiveElements.revenueCopperEdit = revenueCopperEdit
 
     paddingY = 160
-    createLabel('expenditures', WINDOW, 'Expenditures:', paddingX, paddingY, 16)
+    local expLabel = createLabel('expenditures', WINDOW, 'Expenditures:',
+                                 paddingX, paddingY, 16)
 
     local expendituresGoldEdit = CreateMoneyEdit('expendituresGoldEdit', WINDOW)
     expendituresGoldEdit:AddAnchor("TOPLEFT", 150, paddingY)
@@ -407,15 +407,6 @@ local function createMainButton()
     bagButton = createButton('bagButton', bagMngr, 'Accountant', paddingX, 10)
     function bagButton:OnClick() toggleUI(not uiShowed) end
     bagButton:SetHandler("OnClick", bagButton.OnClick)
-end
-
-local lastUpdate = 0
-local function updateWindow(_, dt)
-    lastUpdate = lastUpdate + dt
-    if lastUpdate < 5000 then return end
-    lastUpdate = dt
-    updateElements()
-
 end
 
 local ui = {}

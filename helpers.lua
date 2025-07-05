@@ -3,9 +3,9 @@ local defaultSettings = require('Accountant/util/default_settings')
 
 local helpers = {}
 local settings
-helpers.periods = {'Day', 'Month', 'Week', 'Year', 'All time'}
+helpers.periods = {'Day', 'Week', 'Month', 'Year', 'All time'}
 
-local filename = 'Accountant/data.txt'
+local filename = 'accountant_data.lua'
 
 --[[
     Reads the data from the file and returns it. If the file does not exist,
@@ -366,10 +366,13 @@ end
 
 function helpers.calcProfits(character, period)
     settings = helpers.getSettings()
+    local bankMoney = X2Util:GetMyBankMoneyString()
+
     local profits = {
         revenue = {copper = 0, silver = 0, gold = 0},
         expenditures = {copper = 0, silver = 0, gold = 0},
-        netprofit = {copper = 0, silver = 0, gold = 0}
+        netprofit = {copper = 0, silver = 0, gold = 0},
+        bankMoney = helpers.prettifyMoney(bankMoney)
     }
 
     local needFetch = {}
