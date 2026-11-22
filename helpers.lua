@@ -7,25 +7,112 @@ helpers.periods = {'Day', 'Week', 'Month', 'Year', 'All time'}
 
 local filename = 'accountant_data.lua'
 
---[[
-    Reads the data from the file and returns it. If the file does not exist,
-    an empty table is returned.
+-- Storage layout, so that a save only has to write a small file:
+--   accountant_data.lua        old history file: only read, never written again
+--   accountant_chunk_<n>.lua   older history: written once when a chunk is full
+--   accountant_live.lua        newest entries: the only file written on a save
+-- In memory everything is merged into one table (shared with main.lua).
+local liveFilename = 'accountant_live.lua'
+local ROTATE_AT = 300 -- new entries after which the live file becomes a chunk
+local chunkCount = 0
+local persisted = {} -- per character: entries already stored in old file/chunks
+local dataCache = nil
 
-    @return table The data from the file
-]]
-function helpers.getData()
-    local data = api.File:Read(filename)
-    if data == nil then return {} end
-    return data
+local function chunkName(n)
+    return 'accountant_chunk_' .. tostring(n) .. '.lua'
+end
+
+local function mergeInto(merged, src)
+    for name, info in pairs(src) do
+        if type(info) == 'table' then
+            local dst = merged[name]
+            if dst == nil then
+                dst = {changes = {}}
+                merged[name] = dst
+            end
+            if info.lastSavedMoney ~= nil then
+                dst.lastSavedMoney = info.lastSavedMoney
+            end
+            if info.changes ~= nil then
+                for _, change in ipairs(info.changes) do
+                    table.insert(dst.changes, change)
+                end
+            end
+        end
+    end
+end
+
+local function loadAll()
+    local merged = {}
+    persisted = {}
+    chunkCount = 0
+
+    local old = api.File:Read(filename)
+    if old ~= nil then mergeInto(merged, old) end
+
+    local live = api.File:Read(liveFilename)
+    if live ~= nil and live.chunks ~= nil then chunkCount = live.chunks end
+
+    for i = 1, chunkCount do
+        local chunk = api.File:Read(chunkName(i))
+        if chunk ~= nil then mergeInto(merged, chunk) end
+    end
+
+    for name, info in pairs(merged) do persisted[name] = #info.changes end
+
+    if live ~= nil and live.chars ~= nil then mergeInto(merged, live.chars) end
+    return merged
 end
 
 --[[
-    Saves the data to the file. If the file does not exist, it will be created.
-    If the file does exist, the contents will be overwritten.
+    Returns the data. It is read from disk the first time and kept in memory
+    afterwards. If nothing was saved yet, an empty table is returned.
+
+    @return table The data, character name -> {lastSavedMoney, changes}
+]]
+function helpers.getData()
+    if dataCache == nil then dataCache = loadAll() end
+    return dataCache
+end
+
+--[[
+    Saves the data. Only the newest entries are written (live file), so a save
+    stays fast no matter how long the history is.
 
     @param data table The data to be saved
 ]]
-function helpers.saveData(data) api.File:Write(filename, data) end
+function helpers.saveData(data)
+    dataCache = data
+
+    local live = {}
+    local liveCount = 0
+    for name, info in pairs(data) do
+        if type(info) == 'table' then
+            local entry = {lastSavedMoney = info.lastSavedMoney, changes = {}}
+            local changes = info.changes or {}
+            for i = (persisted[name] or 0) + 1, #changes do
+                table.insert(entry.changes, changes[i])
+                liveCount = liveCount + 1
+            end
+            live[name] = entry
+        end
+    end
+
+    -- live file is full: store it as a new chunk and start a fresh live file
+    if liveCount >= ROTATE_AT then
+        chunkCount = chunkCount + 1
+        api.File:Write(chunkName(chunkCount), live)
+        live = {}
+        for name, info in pairs(data) do
+            if type(info) == 'table' then
+                persisted[name] = #(info.changes or {})
+                live[name] = {lastSavedMoney = info.lastSavedMoney, changes = {}}
+            end
+        end
+    end
+
+    api.File:Write(liveFilename, {chunks = chunkCount, chars = live})
+end
 
 --[[
     Returns a table of all saved character names
@@ -38,6 +125,7 @@ function helpers.getSavedCharacters()
     -- Create a table of all the saved character names
     local characters = {}
     for k, v in pairs(data) do table.insert(characters, k) end
+    table.sort(characters) -- stable order, so dropdown indexes always match
 
     -- Return the table of character names
     return characters
@@ -118,17 +206,15 @@ function helpers.getLastSavedMoney(character)
 
         -- convert copper to silver and gold
         if allmoney.copper >= 100 then
-            local div = allmoney.copper / 100
-            local extra = math.floor(div)
+            local extra = math.floor(allmoney.copper / 100)
             allmoney.silver = allmoney.silver + extra
-            allmoney.copper = getDec(div)
+            allmoney.copper = allmoney.copper % 100
         end
 
         if allmoney.silver >= 100 then
-            local div = allmoney.silver / 100
-            local extra = math.floor(div)
+            local extra = math.floor(allmoney.silver / 100)
             allmoney.gold = allmoney.gold + extra
-            allmoney.silver = getDec(div)
+            allmoney.silver = allmoney.silver % 100
         end
 
         -- format the money string
@@ -207,7 +293,7 @@ function helpers.updateSettings()
     return settings
 end
 
-function helpers.getDate(timestamp)
+local function computeDate(timestamp)
     local timestamp = timestamp or api.Time:GetLocalTime()
     local timezone_offset = settings.timezone_offset * 3600
     local localTimestamp = X2Util:StrNumericAdd(tostring(timestamp),
@@ -303,57 +389,70 @@ function helpers.getDate(timestamp)
 
 end
 
+-- results for saved timestamps never change, so they are calculated only once
+local dateCache = {}
+
+function helpers.getDate(timestamp)
+    if settings == nil then settings = helpers.getSettings() end
+
+    -- current time: always calculate fresh
+    if timestamp == nil then return computeDate(nil) end
+
+    local key = tostring(timestamp) .. ':' .. tostring(settings.timezone_offset)
+    local cached = dateCache[key]
+    if cached == nil then
+        cached = computeDate(timestamp)
+        dateCache[key] = cached
+    end
+    return cached
+end
+
 function helpers.getAllChanges(character)
     local data = helpers.getData()
-    local changes = {}
     local characters = helpers.getSavedCharacters()
     local characterName = characters[character]
-    changes = data[characterName].changes
-    return changes
+    return data[characterName].changes or {}
 end
 
 function helpers.getChangesByPeriod(character, period)
     local data = helpers.getData()
-    local changes = {}
     local characters = helpers.getSavedCharacters()
     local characterName = characters[character]
-    changes = data[characterName].changes
-
-    local filteredChanges = {}
+    local changes = data[characterName].changes
 
     if changes == nil then return {} end
 
     local periodName = helpers.periods[period]
+    if periodName == nil then periodName = 'Day' end
+
+    -- nothing to filter, skip the date calculations completely
+    if periodName == 'All time' then return changes end
+
     local date = helpers.getDate()
+    local filteredChanges = {}
 
     -- filtering by period
-    if periodName == nil then periodName = 'Day' end
     for k, v in pairs(changes) do
         local split = helpers.splitString(v, '|')
         local timestamp = split[1]
-        local currency = split[2]
         local logDate = helpers.getDate(timestamp)
-        if periodName == 'Day' and logDate.year == date.year and logDate.month ==
-            date.month then
-            if logDate.day == date.day then
+        if periodName == 'Day' then
+            if logDate.year == date.year and logDate.month == date.month and
+                logDate.day == date.day then
                 table.insert(filteredChanges, v)
             end
-        end
-        if periodName == 'Month' then
+        elseif periodName == 'Month' then
             if logDate.month == date.month and logDate.year == date.year then
                 table.insert(filteredChanges, v)
             end
-        end
-        if periodName == 'Week' then
+        elseif periodName == 'Week' then
             if logDate.weekNumber == date.weekNumber and logDate.year ==
                 date.year then table.insert(filteredChanges, v) end
-        end
-        if periodName == 'Year' then
+        elseif periodName == 'Year' then
             if logDate.year == date.year then
                 table.insert(filteredChanges, v)
             end
         end
-        if periodName == 'All time' then table.insert(filteredChanges, v) end
     end
 
     return filteredChanges

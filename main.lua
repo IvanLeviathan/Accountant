@@ -12,9 +12,23 @@ local addon = {
 local CANVAS
 local playerId = api.Unit:GetUnitId('player')
 
+-- cached data: loaded once, written to disk at most every SAVE_INTERVAL ms
+local data
+local dirty = false
+local sinceSave = 0
+local SAVE_INTERVAL = 5000
+
+local function flush()
+    if dirty and data ~= nil then
+        helpers.saveData(data)
+        dirty = false
+        sinceSave = 0
+    end
+end
+
 local function checkMoney(_, dt)
 
-    local data = helpers.getData()
+    if data == nil then data = helpers.getData() end
     local curMoney = X2Util.GetMyMoneyString()
 
     -- saving money with timestamp if it changed
@@ -31,7 +45,7 @@ local function checkMoney(_, dt)
         table.insert(data[CANVAS.playerInfo.name].changes,
                      tostring(api.Time:GetLocalTime()) .. '|' .. curMoney)
 
-        helpers.saveData(data)
+        dirty = true
     end
 
 end
@@ -46,27 +60,32 @@ local function Load()
     api.Log:Info("Loaded " .. addon.name .. " v" .. addon.version .. " by " ..
                      addon.author)
     checkMoney();
+    flush()
     -- Event Handlers
     function CANVAS:OnEvent(event, ...)
         if (event == eventName) then
-            local change = unpack(arg);
-            local revenue = true;
-            if (change < 0) then revenue = false; end
-
-            -- TODO REVAMP
             checkMoney();
-
         end
     end
     CANVAS:SetHandler("OnEvent", CANVAS.OnEvent)
     CANVAS:RegisterEvent(eventName);
+
+    -- write pending changes to disk every few seconds instead of on every event
+    CANVAS:SetHandler("OnUpdate", function(_, dt)
+        if dirty then
+            sinceSave = sinceSave + (dt or 16)
+            if sinceSave >= SAVE_INTERVAL then flush() end
+        end
+    end)
 end
 
 local function Unload()
     if CANVAS ~= nil then
         checkMoney();
+        flush()
         CANVAS:Show(false)
         CANVAS:ReleaseHandler("OnEvent")
+        CANVAS:ReleaseHandler("OnUpdate")
         CANVAS = nil
     end
     UI.Unload()
